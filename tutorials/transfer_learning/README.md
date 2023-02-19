@@ -174,7 +174,7 @@ opt = Flux.setup(Flux.Optimisers.Adam(1e-5), m_tot);
 Train for a few epochs:
 
 ```julia
-for iter = 1:8
+for iter = 1:5
     @time train_epoch!(m_tot; opt, dtrain)
     metric_train = eval_f(m_tot, dtrain)
     metric_eval = eval_f(m_tot, deval)
@@ -233,7 +233,7 @@ opt = Flux.setup(Flux.Optimisers.Adam(1e-3), m_tune);
 ```
 
 ```julia
-for iter = 1:8
+for iter = 1:5
     @time train_epoch!(m_infer, m_tune; opt, dtrain)
     metric_train = eval_f(m_infer, m_tune, dtrain)
     metric_eval = eval_f(m_infer, m_tune, deval)
