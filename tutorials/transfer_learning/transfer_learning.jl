@@ -37,9 +37,7 @@ function getindex(data::ImageContainer, idx::Int)
     _img = Images.load(path)
     _img = itemdata(apply(tfm, Image(_img)))
     img = collect(channelview(float32.(RGB.(_img))))
-    img = permutedims(img, (3, 2, 1))
-    # img = permutedims((img .- mu) ./ sigma, (3, 2, 1))
-
+    img = permutedims((img .- mu) ./ sigma, (3, 2, 1))
     name = replace(path, r"(.+)\\(.+)\\(.+_\d+)\.jpg" => s"\2")
     y = name_to_idx[name]
     return img, y
@@ -95,7 +93,7 @@ end
 
 opt = Flux.setup(Flux.Optimisers.Adam(1e-5), m_tot);
 
-for iter = 1:1
+for iter = 1:8
     @time train_epoch!(m_tot; opt, dtrain)
     metric_train = eval_f(m_tot, dtrain)
     metric_eval = eval_f(m_tot, deval)
@@ -129,10 +127,10 @@ function train_epoch!(m_infer, m_tune; opt, dtrain)
     end
 end
 
-opt = Flux.setup(Flux.Optimisers.Adam(5e-4), m_tune);
+opt = Flux.setup(Flux.Optimisers.Adam(1e-3), m_tune);
 
 # training loop
-for iter = 1:1
+for iter = 1:8
     @time train_epoch!(m_infer, m_tune; opt, dtrain)
     metric_train = eval_f(m_infer, m_tune, dtrain)
     metric_eval = eval_f(m_infer, m_tune, deval)

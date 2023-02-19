@@ -81,13 +81,13 @@ name_to_idx = Dict{String,Int32}("cats" => 1, "dogs" => 2, "panda" => 3)
 
 function getindex(data::ImageContainer, idx::Int)
     path = data.img[idx]
-    img = Images.load(path)
-    img = apply(tfm, Image(img))
-    img = permutedims(channelview(RGB.(itemdata(img))), (3, 2, 1))
-    img = Float32.(img)
-    name = replace(path, r"(.+)\\(.+)\\(.+_\d+)\.jpg" => s"\2")    
+    _img = Images.load(path)
+    _img = itemdata(apply(tfm, Image(_img)))
+    img = collect(channelview(float32.(RGB.(_img))))
+    img = permutedims((img .- mu) ./ sigma, (3, 2, 1))
+    name = replace(path, r"(.+)\\(.+)\\(.+_\d+)\.jpg" => s"\2")
     y = name_to_idx[name]
-    return img, Flux.onehotbatch(y, 1:3)
+    return img, y
 end
 ```
 
@@ -144,8 +144,8 @@ function eval_f(m, deval)
     good = 0
     count = 0
     for (x, y) in deval
-        good += sum(Flux.onecold(m(x)) .== Flux.onecold(y))
-        count += size(y, 2)
+        good += sum(Flux.onecold(m(x)) .== y)
+        count += length(y)
     end
     acc = round(good / count, digits = 4)
     return acc
@@ -155,12 +155,12 @@ end
 Define a training loop for 1 epoch: 
 
 ```julia
-function train_epoch!(m; ps, opt, dtrain)
+function train_epoch!(model; opt, dtrain)
     for (x, y) in dtrain
-        grads = gradient(ps) do
-            Flux.Losses.logitcrossentropy(m(x), y)
+        grads = gradient(model) do m
+            Flux.Losses.logitcrossentropy(m(x), Flux.onehotbatch(y, 1:3))
         end
-        update!(opt, ps, grads)
+        update!(opt, model, grads[1])
     end
 end
 ```
@@ -168,15 +168,14 @@ end
 Set learnable parameters and optimiser:
 
 ```julia
-ps = Flux.params(m_tot[2:end]);
-opt = Adam(3e-4)
+opt = Flux.setup(Flux.Optimisers.Adam(1e-5), m_tot);
 ```
 
 Train for a few epochs:
 
 ```julia
 for iter = 1:8
-    @time train_epoch!(m_tot; ps, opt, dtrain)
+    @time train_epoch!(m_tot; opt, dtrain)
     metric_train = eval_f(m_tot, dtrain)
     metric_eval = eval_f(m_tot, deval)
     @info "train" metric = metric_train
@@ -209,8 +208,8 @@ function eval_f(m_infer, m_tune, deval)
     good = 0
     count = 0
     for (x, y) in deval
-        good += sum(Flux.onecold(m_tune(m_infer(x))) .== Flux.onecold(y))
-        count += size(y, 2)
+        good += sum(Flux.onecold(m_tune(m_infer(x))) .== y)
+        count += length(y)
     end
     acc = round(good / count, digits = 4)
     return acc
@@ -218,25 +217,24 @@ end
 ```
 
 ```julia
-function train_epoch!(m_infer, m_tune; ps, opt, dtrain)
+function train_epoch!(m_infer, m_tune; opt, dtrain)
     for (x, y) in dtrain
         infer = m_infer(x)
-        grads = gradient(ps) do
-            Flux.Losses.logitcrossentropy(m_tune(infer), y)
+        grads = gradient(m_tune) do m
+            Flux.Losses.logitcrossentropy(m(infer), Flux.onehotbatch(y, 1:3))
         end
-        update!(opt, ps, grads)
+        update!(opt, m_tune, grads[1])
     end
 end
 ```
 
 ```julia
-ps = Flux.params(m_tune);
-opt = Adam(3e-4)
+opt = Flux.setup(Flux.Optimisers.Adam(1e-3), m_tune);
 ```
 
 ```julia
 for iter = 1:8
-    @time train_epoch!(m_infer, m_tune; ps, opt, dtrain)
+    @time train_epoch!(m_infer, m_tune; opt, dtrain)
     metric_train = eval_f(m_infer, m_tune, dtrain)
     metric_eval = eval_f(m_infer, m_tune, deval)
     @info "train" metric = metric_train
